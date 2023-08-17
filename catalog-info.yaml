@@ -1,9 +1,11 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: Basic-Node-express-app
-  description: A template for Basic Node express application.
+  name: ${{values.name | dump}}
+  description: ${{values.description | dump}}
+  annotations:
+    github.com/project-slug: ${{values.destination.owner + "/" + values.destination.repo}}
 spec:
-  type: service
-  owner: user:guest
+  type: documentation
   lifecycle: experimental
+  owner: ${{values.owner | dump}}

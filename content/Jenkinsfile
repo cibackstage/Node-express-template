@@ -1,0 +1,81 @@
+pipeline{
+    agent { label 'aws-node1' }
+
+    parameters {
+        // string (defaultValue: 'latest', description: 'Compose release varsion', name : 'compose_version')
+        string (defaultValue: 'latest', description: 'Backstage APP version', name : 'app_version')        
+        string (description: 'App patch version', name : 'patch_version')
+        string (defaultValue: 'master', description: 'Git branch', name : 'git_branch')          
+        booleanParam(defaultValue: false, description: 'Build docker image', name: 'build_image')      
+        booleanParam(defaultValue: false, description: 'Push docker image to GCR', name: 'push_image')  
+        booleanParam(defaultValue: true, description: 'Turn up the server', name: 'deploy')//deploy_in_qa
+        // booleanParam(defaultValue: false, description: 'Push tar file to Nexus Repository', 
+        // name: 'push_tar_file')   
+        // text(name: 'env_file', defaultValue: params.env_file ?:'sample value')  
+        // booleanParam(defaultValue: false, description: 'Clean the system', name: 'clean_system')   
+    }
+
+    stages {
+        stage('Clone repository') {            
+            steps {
+                git credentialsId: 'cibackstage', url: "#{RepoURL}", branch: params.git_branch
+            }            
+        }
+
+        stage('Build image') {            
+            when {
+                expression {
+                    return params.build_image == true;
+                    }
+            }          
+            steps {
+                echo 'build enabled'
+                /* Building the image */ 
+                sh 'docker build -t backstage_app .'  
+            }
+        }
+
+        stage('Push image') {            
+            when {
+                expression {
+                    return params.push_image == true;
+                    }
+            }      
+            steps {
+                 /* 
+                    push image to artifactory
+                */ 
+                script {
+                    
+                    if (patch_version) {
+                        sh 'docker tag backstage_app gcr.io/wn-com/compose/backstage_app:${patch_version}'
+                        sh 'docker push gcr.io/wn-com/compose/backstage_app:${patch_version}'                        
+                    }
+                    else {
+                        sh 'docker tag compose_wss gcr.io/wn-com/compose/backstage_app:${app_version}'
+                        sh 'docker push gcr.io/wn-com/compose/backstage_app:${app_version}'
+                    }
+                }
+                
+            }
+        }
+
+        stage('Start server') {          
+            when {
+                expression {
+                    return params.deploy == true;
+                    }
+            }                
+            steps {
+                 /* Start server */      
+                writeFile(file: '.env', text: params.env_file)
+                sh 'npm install'
+                sh 'mkdir -p /opt/backstage-apps/app' 
+                sh 'mv /opt/backstage-apps/app /opt/backstage-apps/app-jk-$(date +%Y%m%d%H%M%S)'
+                sh 'mkdir -p /opt/backstage-apps/app' 
+                sh 'cp -r /var/lib/jenkins/workspace/CI_COM/CI_COM_deployments/CI_COM_developments_QA/CI_Backstage_app/* /opt/backstage-apps/app/'
+                sh 'JENKINS_NODE_COOKIE=dontKillMe&& /var/jenk_test/backstage-app.system restart'          
+            }
+        }
+    }
+}
